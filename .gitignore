@@ -1,0 +1,19 @@
+# Ignore Python virtual environments
+venv/
+.env
+*.log
+
+# Ignore all daily scraped/saved JSONs and Markdown
+*.json
+*.md
+
+# Ignore backup or checkpoint files
+*BACKUP.json
+*checkpoint*
+
+# Ignore Windows Zone.Identifier metadata
+*:Zone.Identifier
+
+# Ignore Python bytecode
+__pycache__/
+*.pyc
