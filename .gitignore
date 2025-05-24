@@ -5,7 +5,8 @@ venv/
 
 # Ignore all daily scraped/saved JSONs and Markdown
 *.json
-*.md
+newsletter*
+summary*.md
 *.xlsx
 *.pdf
 
