@@ -6,6 +6,8 @@ venv/
 # Ignore all daily scraped/saved JSONs and Markdown
 *.json
 *.md
+*.xlsx
+*.pdf
 
 # Ignore backup or checkpoint files
 *BACKUP.json
