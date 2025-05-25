@@ -10,6 +10,9 @@ summary*.md
 *.xlsx
 *.pdf
 
+# Ignore old files
+src/OLD_FILES/
+
 # Ignore backup or checkpoint files
 *BACKUP.json
 *checkpoint*
