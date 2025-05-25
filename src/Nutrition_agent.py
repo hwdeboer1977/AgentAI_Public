@@ -40,7 +40,10 @@ def log_food_to_google_sheets(date, item, quantity, calories, fat, carbs, protei
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("modular-ethos-460803-c1-e860424b6219.json", scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_name(
+    "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json", scope
+    )
+
     client = gspread.authorize(creds)
     
     # Append a new row to the "Calories" sheet
@@ -54,7 +57,9 @@ def get_daily_summary():
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("modular-ethos-460803-c1-e860424b6219.json", scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_name(
+    "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json", scope
+    )
     client = gspread.authorize(creds)
     sheet = client.open("Calories_log").worksheet("Calories")
     rows = sheet.get_all_values()[1:]  # Skip the header row
@@ -182,7 +187,9 @@ def reset_day(update: Update, context):
             "https://spreadsheets.google.com/feeds",
             "https://www.googleapis.com/auth/drive"
         ]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("modular-ethos-460803-c1-e860424b6219.json", scope)
+        creds = ServiceAccountCredentials.from_json_keyfile_name(
+        "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json", scope
+        )
         client = gspread.authorize(creds)
         sheet = client.open("Calories_log").worksheet("Calories")
 
