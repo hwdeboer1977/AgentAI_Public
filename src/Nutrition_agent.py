@@ -18,6 +18,10 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN_NUTRITION")
 openai.api_key = os.getenv("OPENAI_API_KEY_HW")
 
+# Running on local (IS_LOCAL = True) or on server (IS_LOCAL = False)
+IS_LOCAL = True
+
+
 # === NUTRITION TARGETS (per day) ===
 DAILY_TARGETS = {
     "calories": 2130.0,
@@ -33,6 +37,13 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+# Location for json Google sheets
+secret_path = (
+    os.path.join(os.path.dirname(__file__), "..", "modular-ethos-460803-c1-e860424b6219.json")
+    if IS_LOCAL else "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json"
+)
+
+
 # === GOOGLE SHEETS LOGGING FUNCTION ===
 def log_food_to_google_sheets(date, item, quantity, calories, fat, carbs, protein):
      # Connect to Google Sheets using a service account
@@ -40,9 +51,11 @@ def log_food_to_google_sheets(date, item, quantity, calories, fat, carbs, protei
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
-    "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json", scope
-    )
+    # creds = ServiceAccountCredentials.from_json_keyfile_name(
+    # "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json", scope
+    # )
+
+    creds = ServiceAccountCredentials.from_json_keyfile_name(secret_path, scope)
 
     client = gspread.authorize(creds)
     
@@ -52,14 +65,26 @@ def log_food_to_google_sheets(date, item, quantity, calories, fat, carbs, protei
 
 # === DAILY SUMMARY FUNCTION ===
 def get_daily_summary():
+    import re
+
+    def parse_number(cell):
+        """Remove any non-numeric characters and return float."""
+        try:
+            return float(re.sub(r"[^\d.]", "", cell.strip()))
+        except:
+            return 0.0
+
     # Connect to Google Sheets and calculate total nutrition intake for today
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
-    "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json", scope
-    )
+    # creds = ServiceAccountCredentials.from_json_keyfile_name(
+    #     "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json", scope
+    # )
+
+    creds = ServiceAccountCredentials.from_json_keyfile_name(secret_path, scope)
+
     client = gspread.authorize(creds)
     sheet = client.open("Calories_log").worksheet("Calories")
     rows = sheet.get_all_values()[1:]  # Skip the header row
@@ -68,14 +93,11 @@ def get_daily_summary():
     totals = {"calories": 0.0, "fat": 0.0, "carbs": 0.0, "protein": 0.0}
 
     for row in rows:
-        if row[0] == today:
-            try:
-                totals["calories"] += float(row[3])
-                totals["fat"] += float(row[4])
-                totals["carbs"] += float(row[5])
-                totals["protein"] += float(row[6])
-            except ValueError:
-                continue
+        if row[0] == today and len(row) >= 7:
+            totals["calories"] += parse_number(row[3])
+            totals["fat"]      += parse_number(row[4])
+            totals["carbs"]    += parse_number(row[5])
+            totals["protein"]  += parse_number(row[6])
 
     # Calculate percentage progress toward daily targets
     def percent(val, target):
@@ -88,7 +110,6 @@ def get_daily_summary():
         "carbs": percent(totals["carbs"], DAILY_TARGETS["carbs"])
     }
 
-    # Return markdown-formatted progress report
     return (f"📊 *Today's Nutrition Summary*\n"
             f"- Calories: {totals['calories']} kcal ({pct['calories']}%)\n"
             f"- Protein: {totals['protein']}g ({pct['protein']}%)\n"
@@ -187,9 +208,12 @@ def reset_day(update: Update, context):
             "https://spreadsheets.google.com/feeds",
             "https://www.googleapis.com/auth/drive"
         ]
-        creds = ServiceAccountCredentials.from_json_keyfile_name(
-        "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json", scope
-        )
+        # creds = ServiceAccountCredentials.from_json_keyfile_name(
+        # "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json", scope
+        # )
+
+        creds = ServiceAccountCredentials.from_json_keyfile_name(secret_path, scope)
+
         client = gspread.authorize(creds)
         sheet = client.open("Calories_log").worksheet("Calories")
 
