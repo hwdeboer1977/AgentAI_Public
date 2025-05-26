@@ -63,43 +63,38 @@ def log_food_to_google_sheets(date, item, quantity, calories, fat, carbs, protei
     sheet = client.open("Calories_log").worksheet("Calories")
     sheet.append_row([date, item, quantity, calories, fat, carbs, protein])
 
-# === DAILY SUMMARY FUNCTION ===
 def get_daily_summary():
     import re
 
     def parse_number(cell):
         """Remove any non-numeric characters and return float."""
         try:
-            return float(re.sub(r"[^\d.]", "", cell.strip()))
+            return float(re.sub(r"[^\d.]", "", str(cell).strip()))
         except:
             return 0.0
 
-    # Connect to Google Sheets and calculate total nutrition intake for today
+    # Connect to Google Sheets
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
-    # creds = ServiceAccountCredentials.from_json_keyfile_name(
-    #     "/etc/secrets/modular-ethos-460803-c1-e860424b6219.json", scope
-    # )
-
     creds = ServiceAccountCredentials.from_json_keyfile_name(secret_path, scope)
-
     client = gspread.authorize(creds)
     sheet = client.open("Calories_log").worksheet("Calories")
-    rows = sheet.get_all_values()[1:]  # Skip the header row
+    rows = sheet.get_all_values()[1:]  # Skip header
 
-    today = datetime.date.today().isoformat()
+    today = datetime.date.today().isoformat().strip()
     totals = {"calories": 0.0, "fat": 0.0, "carbs": 0.0, "protein": 0.0}
 
     for row in rows:
-        if row[0] == today and len(row) >= 7:
-            totals["calories"] += parse_number(row[3])
-            totals["fat"]      += parse_number(row[4])
-            totals["carbs"]    += parse_number(row[5])
-            totals["protein"]  += parse_number(row[6])
+        if len(row) >= 7:
+            row_date = row[0].strip()
+            if row_date == today:
+                totals["calories"] += parse_number(row[3])
+                totals["fat"]      += parse_number(row[4])
+                totals["carbs"]    += parse_number(row[5])
+                totals["protein"]  += parse_number(row[6])
 
-    # Calculate percentage progress toward daily targets
     def percent(val, target):
         return round((val / target) * 100, 1)
 
@@ -115,6 +110,7 @@ def get_daily_summary():
             f"- Protein: {totals['protein']}g ({pct['protein']}%)\n"
             f"- Fat: {totals['fat']}g ({pct['fat']}%)\n"
             f"- Carbs: {totals['carbs']}g ({pct['carbs']}%)")
+
 
 
 # === JSON UTILITIES ===
