@@ -3,6 +3,9 @@ venv/
 .env
 *.log
 
+# Ignore documentation examples
+/src/examplesDocs/
+
 # Ignore all daily scraped/saved JSONs and Markdown
 *.json
 newsletter*

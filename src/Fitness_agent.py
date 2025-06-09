@@ -7,7 +7,17 @@ from dotenv import load_dotenv
 import os
 import datetime
 import gspread
+import re
 from oauth2client.service_account import ServiceAccountCredentials
+
+# In chat mode, GPT is using natural language understanding (NLU) 
+# and semantic similarity to interpret that "low" likely means "light" in the context of intensity.
+# Option 1: Use a simple synonym map with words like "low", "light"
+# Option 2: Let the Agent handle fuzzy interpretation (GPT-powered)
+# Right now your handle_message() is doing all the extraction before it ever sends anything to GPT.
+# Instead, you could just pass the full user input directly to the agent and let GPT parse it:
+
+# Here we use option 1
 
 # === SETUP ===
 load_dotenv()
@@ -79,16 +89,17 @@ def reset_day(update: Update, context):
 
 # === FITNESS LOGGING TOOL ===
 @function_tool
-def log_exercise(ctx: RunContextWrapper[Any], exercise_type: str, duration_minutes: int, intensity: str = "") -> str:
-    # Map common aliases to standardized exercise types
+def log_exercise(ctx: RunContextWrapper[Any], user_input: str) -> str:
+    """
+    Parses freeform text like '50 minutes weight training moderate' and logs to Google Sheets.
+    """
     alias_map = {
         "weights": "fitness (weights)",
-        "cardio": "fitness (cardio)",
-        "weight training": "fitness (weights)"
+        "weight": "fitness (weights)",
+        "weight training": "fitness (weights)",
+        "cardio": "fitness (cardio)"
     }
-    exercise_type = alias_map.get(exercise_type, exercise_type)
 
-    # MET values for calorie estimation by activity and intensity
     MET_table = {
         "swimming": {"light": 6.0, "moderate": 8.0, "intense": 10.0},
         "walking": {"light": 2.8, "moderate": 3.5, "intense": 4.5},
@@ -96,11 +107,35 @@ def log_exercise(ctx: RunContextWrapper[Any], exercise_type: str, duration_minut
         "fitness (cardio)": {"light": 5.5, "moderate": 7.0, "intense": 9.0}
     }
 
-    # Ask for intensity if missing or invalid
-    if exercise_type not in MET_table or intensity not in MET_table[exercise_type]:
-        ctx.user_state["pending_exercise"] = {"exercise_type": exercise_type, "duration_minutes": duration_minutes}
-        return f"Please specify the intensity (light, moderate, intense) for your {exercise_type} workout."
+    # Extract data from user input
+    user_input = user_input.lower()
 
+    # Duration
+    duration_match = re.search(r"(\d+)\s*(min|minutes)?", user_input)
+    duration_minutes = int(duration_match.group(1)) if duration_match else None
+
+    # Intensity
+    intensity = None
+    for level in ["light", "moderate", "intense"]:
+        if level in user_input:
+            intensity = level
+            break
+
+    # Exercise type
+    exercise_type = None
+    for keyword in list(alias_map.keys()) + list(MET_table.keys()):
+        if keyword in user_input:
+            exercise_type = alias_map.get(keyword, keyword)
+            break
+
+    if not all([exercise_type, duration_minutes, intensity]):
+        missing = []
+        if not exercise_type: missing.append("exercise type")
+        if not duration_minutes: missing.append("duration")
+        if not intensity: missing.append("intensity (light/moderate/intense)")
+        return f"⚠️ Still missing: {', '.join(missing)}. Please send it."
+
+    # Estimate calories
     weight_kg = 80
     calories = MET_table[exercise_type][intensity] * weight_kg * (duration_minutes / 60)
 
@@ -112,7 +147,10 @@ def log_exercise(ctx: RunContextWrapper[Any], exercise_type: str, duration_minut
         calories
     )
 
-    return f"✅ Logged {exercise_type} ({intensity}) for {duration_minutes} minutes — approx. {round(calories)} kcal burned."
+    return (
+        f"✅ I've logged your {duration_minutes}-minute {exercise_type} session at {intensity} intensity.\n"
+        f"Approximately {round(calories)} kcal were burned. Keep up the great work!"
+    )
 
 @function_tool
 def resume_logging(ctx: RunContextWrapper[Any], intensity: str) -> str:
@@ -134,6 +172,10 @@ user_memories = {}  # To store partial user inputs per chat
 # === TELEGRAM COMMANDS ===
 def handle_message(update: Update, context):
     import asyncio
+
+    if update.message is None or update.message.text is None:
+        return  # Ignore non-text updates
+
     chat_id = update.message.chat_id
     user_input = update.message.text.strip().lower()
 
@@ -155,10 +197,18 @@ def handle_message(update: Update, context):
             pass
 
     # Match intensity levels
-    intensity_map = {"medium": "moderate", "high": "intense"}
-    for level in ["light", "moderate", "medium", "intense", "high"]:
-        if level in user_input:
-            memory["intensity"] = intensity_map.get(level, level)
+    intensity_map = {
+        "low": "light",
+        "light": "light",
+        "moderate": "moderate",
+        "medium": "moderate",
+        "high": "intense",
+        "intense": "intense"
+    }
+
+    for word in user_input.split():
+        if word in intensity_map:
+            memory["intensity"] = intensity_map[word]
             break
 
     # If all fields are present, log the workout
@@ -172,8 +222,20 @@ def handle_message(update: Update, context):
             logging.exception("Error running agent")
             update.message.reply_text("⚠️ Something went wrong while logging your workout. Please try again.")
     else:
+        # ✅ NEW: Try again if something was just added and now all fields are available
+        if any(memory.values()):
+            if all(memory.values()):
+                full_prompt = f"log {memory['exercise_type']} for {memory['duration']} minutes at {memory['intensity']} intensity"
+                try:
+                    response = asyncio.run(Runner.run(agent, full_prompt))
+                    update.message.reply_text(response.final_output)
+                    user_memories[chat_id] = {"exercise_type": None, "duration": None, "intensity": None}
+                    return
+                except Exception as e:
+                    logging.exception("Error on retry")
         missing = [k for k, v in memory.items() if not v]
         update.message.reply_text(f"Got it! Still missing: {', '.join(missing)}. Please send it.")
+
 
 def start(update: Update, context):
     update.message.reply_text(
